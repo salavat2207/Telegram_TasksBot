@@ -4,13 +4,12 @@ import logging
 import os
 import sqlite3
 import sys
-import random
+
 
 from aiogram.fsm.context import FSMContext
 from actions import get_random_task
 
-import aiogram
-from aiogram.utils.keyboard import InlineKeyboardBuilder  # (можешь удалить, если не нужен)
+
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -34,7 +33,7 @@ TOKEN = os.getenv("TOKEN")
 
 dp = Dispatcher()
 
-# ========== БД и утилиты ==========
+
 DB_PATH = Path(__file__).with_name("base.db")
 
 def db():
@@ -43,7 +42,6 @@ def db():
 def ensure_schema():
     con = db(); cur = con.cursor()
 
-    # users (как было)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +52,6 @@ def ensure_schema():
     )
     """)
 
-    # миграции для users (как было)
     cur.execute("PRAGMA table_info(users)")
     cols = {r[1] for r in cur.fetchall()}
     if "username" not in cols:
@@ -62,7 +59,6 @@ def ensure_schema():
     if "score" not in cols:
         cur.execute("ALTER TABLE users ADD COLUMN score INTEGER NOT NULL DEFAULT 0")
 
-    # NEW: таблица задач
     cur.execute("""
     CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,7 +69,6 @@ def ensure_schema():
     )
     """)
 
-    # NEW: таблица очков по дням (если уже добавлял — оставь)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS scores (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,11 +85,9 @@ def ensure_schema():
 
 
 def today_iso() -> str:
-    # локальная дата ОС; если хочешь строго Europe/Berlin — можно использовать pytz/zoneinfo
     return datetime.date.today().isoformat()
 
 def add_score_today_and_get_total(tg_id: int, delta: int) -> int:
-    """Прибавить delta к сегодняшним очкам и вернуть итог за сегодня."""
     con = db(); cur = con.cursor()
     d = today_iso()
     cur.execute("""
@@ -117,7 +110,6 @@ def get_today_score(tg_id: int) -> int:
     return int(row[0]) if row else 0
 
 def get_total_score_all_time(tg_id: int) -> int:
-    """Если хочешь показывать общий счёт: суммируем из таблицы scores."""
     con = db(); cur = con.cursor()
     cur.execute("SELECT COALESCE(SUM(score), 0) FROM scores WHERE tg_id = ?", (tg_id,))
     row = cur.fetchone(); con.close()
@@ -135,7 +127,6 @@ def ensure_user(tg_id: int, username: str | None):
     """, (tg_id, username))
     con.commit()
 
-    # мягкая проверка (без падения)
     cur.execute("SELECT tg_id FROM users WHERE tg_id = ?", (tg_id,))
     row = cur.fetchone()
     if not row:
@@ -151,14 +142,13 @@ def ensure_user(tg_id: int, username: str | None):
 
 
 async def main() -> None:
-    ensure_schema()  # <= добавь это
+    ensure_schema()
     bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     await dp.start_polling(bot)
 
 
 
 def add_score_and_get_total(tg_id: int, delta: int) -> int:
-    """Прибавить очки и вернуть итоговый счёт."""
     con = db()
     cur = con.cursor()
     cur.execute("UPDATE users SET score = score + ? WHERE tg_id = ?", (delta, tg_id))
@@ -176,14 +166,12 @@ def get_user_score(tg_id: int) -> int:
     con.close()
     return int(row[0]) if row else 0
 
-# ========== Состояния ==========
 class QuizState(StatesGroup):
     language = State()
 
 class AnswerState(StatesGroup):
     waiting_for_answer = State()
 
-# ========== Хелперы UI ==========
 def get_language_keyboard():
     kb = [
         [KeyboardButton(text="Python")],
@@ -199,15 +187,12 @@ def get_action_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
-# ========== Хендлеры ==========
 @dp.message(CommandStart())
 async def comand_start_handler(message: Message):
     ensure_schema()
     ensure_user(message.from_user.id, message.from_user.username)
 
-    today_total = get_today_score(message.from_user.id)  # 👈 СЕГОДНЯ
-    # если нужен общий счёт по всем дням:
-    # all_time = get_total_score_all_time(message.from_user.id)
+    today_total = get_today_score(message.from_user.id)
 
     await message.answer(
         f"Привет, {html.bold(html.quote(message.from_user.full_name))}!"
@@ -244,7 +229,6 @@ async def send_random_task(message: Message, state: FSMContext):
         await message.answer("Сначала выберите язык через /help")
         return
 
-    # Используем тот же файл БД
     record = get_random_task(str(DB_PATH), language)
     if not record:
         await message.answer("Вопросов для этого языка пока нет.")
@@ -335,7 +319,6 @@ async def check_answer(message: Message, state: FSMContext):
     else:
         await message.answer("❌ Ответ неверный. Попробуйте ещё.")
 
-    # важно: очищаем состояние всегда
     await state.clear()
 
 
