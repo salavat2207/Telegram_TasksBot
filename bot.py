@@ -42,6 +42,7 @@ def db():
 
 def ensure_schema():
     con = db(); cur = con.cursor()
+
     # users (как было)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
@@ -52,7 +53,8 @@ def ensure_schema():
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
     """)
-    # миграция для старых users
+
+    # миграции для users (как было)
     cur.execute("PRAGMA table_info(users)")
     cols = {r[1] for r in cur.fetchall()}
     if "username" not in cols:
@@ -60,18 +62,29 @@ def ensure_schema():
     if "score" not in cols:
         cur.execute("ALTER TABLE users ADD COLUMN score INTEGER NOT NULL DEFAULT 0")
 
-    # NEW: таблица очков по дням
+    # NEW: таблица задач
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        language TEXT NOT NULL,       -- 'python' / 'javascript'
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        hint TEXT
+    )
+    """)
+
+    # NEW: таблица очков по дням (если уже добавлял — оставь)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS scores (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tg_id INTEGER NOT NULL,
-        date TEXT NOT NULL,            -- формат YYYY-MM-DD (локальная дата)
+        date TEXT NOT NULL,            -- YYYY-MM-DD
         score INTEGER NOT NULL DEFAULT 0,
         UNIQUE(tg_id, date)
     )
     """)
-    # индекс (не обязателен, но полезен)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_scores_tg_date ON scores(tg_id, date)")
+
     con.commit(); con.close()
 
 
